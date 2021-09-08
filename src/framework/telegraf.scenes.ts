@@ -1,10 +1,11 @@
 import { Middleware, Scenes, Telegraf } from "telegraf";
 import { WizardContext, WizardSessionData } from "telegraf/typings/scenes";
-import { getSessionState, getTextMessage, readNumber, setSessionState } from "./telegraf.utils";
+import { User } from "typegram";
+import { getSessionState, getTextMessage, MessageAttachment, readNumber, sendMessage, setSessionState } from "./telegraf.utils";
 
 const createScene = (bot: Telegraf, sceneId: string, words: Array<string | RegExp>, ...steps: Array<Middleware<Scenes.WizardContext>>) => {
     const scene: Scenes.WizardScene<Scenes.WizardContext> = new Scenes.WizardScene<Scenes.WizardContext>(sceneId, ...steps);
-    const stage = new Scenes.Stage([scene], { });
+    const stage = new Scenes.Stage([scene], {});
     stage.command(['Basta', 'basta'], async (ctx) => {
         await ctx.scene.leave();
         ctx.reply('¡Dale! Dejamos acá');
@@ -17,26 +18,28 @@ const createScene = (bot: Telegraf, sceneId: string, words: Array<string | RegEx
 type AfterStepType = 'next' | 'end' | 'repeat';
 
 interface StepDefinitionParams<StateType> {
-    sendMessage: (message: string | number) => void;
+    sendMessage: (message: string | number, attachments?: MessageAttachment) => void;
     getTextFromMessage: () => string;
     getNumberFromMessage: () => number;
     state: StateType,
-    setState: (newState: StateType) => void
+    setState: (newState: StateType) => void,
+    user: User,
 }
 
 export type StepDefinition<StateType> = (params: StepDefinitionParams<StateType>) => Promise<AfterStepType | void> | AfterStepType | void;
 
-const getStepDefinitionParamsFromContext = <StateType>(context: Scenes.WizardContext<Scenes.WizardSessionData>): StepDefinitionParams<StateType> =>  ({
-    sendMessage: (message: string | number) => context.reply(String(message)),
+const getStepDefinitionParamsFromContext = <StateType>(context: Scenes.WizardContext<Scenes.WizardSessionData>): StepDefinitionParams<StateType> => ({
+    sendMessage: (message: string | number, attachments?: MessageAttachment) => sendMessage(context, message, attachments),
     getTextFromMessage: () => getTextMessage(context),
     getNumberFromMessage: () => readNumber(context),
     state: getSessionState<StateType>(context),
     setState: (newState: StateType) => setSessionState<StateType>(context, newState),
+    user: context.message!.from,
 })
 
-const createStep: <StateType>(definition: StepDefinition<StateType>, defaultAfter: AfterStepType) => Middleware<Scenes.WizardContext> = 
-    <StateType>(definition: StepDefinition<StateType>, defaultAfter: AfterStepType):  Middleware<Scenes.WizardContext> => {
-        return async (context:  WizardContext<WizardSessionData>) => {
+const createStep: <StateType>(definition: StepDefinition<StateType>, defaultAfter: AfterStepType) => Middleware<Scenes.WizardContext> =
+    <StateType>(definition: StepDefinition<StateType>, defaultAfter: AfterStepType): Middleware<Scenes.WizardContext> => {
+        return async (context: WizardContext<WizardSessionData>) => {
             const params: StepDefinitionParams<StateType> = getStepDefinitionParamsFromContext<StateType>(context);
             try {
                 const after = await definition(params) ?? defaultAfter;

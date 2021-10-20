@@ -1,7 +1,7 @@
 import { Middleware, Scenes, Telegraf } from "telegraf";
 import { WizardContext, WizardSessionData } from "telegraf/typings/scenes";
 import { User } from "typegram";
-import { getSessionState, getTextMessage, MessageAttachment, readNumber, sendMessage, setSessionState } from "./telegraf.utils";
+import { getLocationMessage, getSessionState, getTextMessage, GPSLocation, isLocationMessage, MessageAttachment, readNumber, sendMessage, setSessionState } from "./telegraf.utils";
 
 const createScene = (bot: Telegraf, sceneId: string, words: Array<string | RegExp>, ...steps: Array<Middleware<Scenes.WizardContext>>) => {
     const scene: Scenes.WizardScene<Scenes.WizardContext> = new Scenes.WizardScene<Scenes.WizardContext>(sceneId, ...steps);
@@ -15,15 +15,17 @@ const createScene = (bot: Telegraf, sceneId: string, words: Array<string | RegEx
     bot.hears(words, Scenes.Stage.enter<any>(sceneId));
 }
 
-type AfterStepType = 'next' | 'end' | 'repeat';
+type AfterStepType = 'next' | 'end' | 'repeat' | number;
 
 interface StepDefinitionParams<StateType> {
     sendMessage: (message: string | number, attachments?: MessageAttachment) => void;
     getTextFromMessage: () => string;
     getNumberFromMessage: () => number;
-    state: StateType,
-    setState: (newState: StateType) => void,
-    user: User,
+    getLocationFromMessage: () => GPSLocation;
+    isLocationMessage: () => boolean;
+    state: StateType;
+    setState: (newState: StateType) => void;
+    user: User;
 }
 
 export type StepDefinition<StateType> = (params: StepDefinitionParams<StateType>) => Promise<AfterStepType | void> | AfterStepType | void;
@@ -35,6 +37,8 @@ const getStepDefinitionParamsFromContext = <StateType>(context: Scenes.WizardCon
     state: getSessionState<StateType>(context),
     setState: (newState: StateType) => setSessionState<StateType>(context, newState),
     user: context.message!.from,
+    getLocationFromMessage: () => getLocationMessage(context),
+    isLocationMessage: () => isLocationMessage(context),
 })
 
 const createStep: <StateType>(definition: StepDefinition<StateType>, defaultAfter: AfterStepType) => Middleware<Scenes.WizardContext> =
@@ -46,7 +50,10 @@ const createStep: <StateType>(definition: StepDefinition<StateType>, defaultAfte
                 switch (after) {
                     case 'repeat': return;
                     case 'next': return context.wizard.next();
-                    case 'end': context.scene.leave();
+                    case 'end': return context.scene.leave();
+                    default: if(typeof after === 'number') {
+                        return context.wizard.selectStep(context.wizard.cursor + after)
+                    }
                 }
             } catch (error) {
                 context.reply('Ups... Con eso me mataste, perdon');

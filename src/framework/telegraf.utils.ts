@@ -1,14 +1,32 @@
 import { Markup, Scenes } from "telegraf";
+
+export interface GPSLocation {
+    latitude: number;
+    longitude: number;
+  }
+
 export interface MessageAttachment {
     options?: Array<string>;
+    useLocation?: boolean;
 }
 
 export const sendMessage = (context: Scenes.WizardContext<Scenes.WizardSessionData>, message: string | number, attachments?: MessageAttachment): void => {
-    const options = attachments?.options && Markup.keyboard(attachments?.options?.map(option => Markup.button.text(option))).oneTime().resize().selective();
+    let options;
+    let optionsButtons: Array<any> = [];
+
+    if(attachments?.useLocation) optionsButtons.push(Markup.button.locationRequest('Mi ubicación (debe prender el GPS)'));
+    if (attachments?.options) optionsButtons = optionsButtons.concat(attachments.options.map(option => Markup.button.text(option)));
+
+    if (optionsButtons.length > 0) options = Markup.keyboard(optionsButtons).oneTime().resize().selective();
+    
     context.reply(String(message), options);
 }
 
 export const getTextMessage = (context: Scenes.WizardContext<Scenes.WizardSessionData>): string => (context.message as any).text;
+
+export const getLocationMessage = (context: Scenes.WizardContext<Scenes.WizardSessionData>): GPSLocation => (context.message as any).location;
+
+export const isLocationMessage = (context: Scenes.WizardContext<Scenes.WizardSessionData>): boolean => !!((context.message as any).location);
 
 export const readNumber = (context: Scenes.WizardContext<Scenes.WizardSessionData>) => {
     const text: string = getTextMessage(context);
